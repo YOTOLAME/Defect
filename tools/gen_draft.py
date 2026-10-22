@@ -6,11 +6,14 @@ Usage:
 
 MAPPING.json:
 {
-  "inspector": "Capt. L. PEIGNIER",
+  "inspector": "PEIGNIER Loic",
   "items": [
     {"obs": 1, "form": "INSPECTARE-PSV-MOBILE.html", "q": "4.12",
-     "comment": "Factual OVID-style comment, past tense.", "photos": [1]}
-  ]
+     "comment": "Factual OVID-style comment, past tense.", "photos": [1],
+     "subject": "Liquid Bulk Manifold Condition",
+     "action": "CTR to label the manifold and provide evidence of completion."}
+  ],
+  "synergi": {"INSPECTARE-PSV-MOBILE.html": {"type": "Marine Inspection"}}   (optional overrides)
 }
 "photos" = 1-based indexes of the observation's photos (omit = all photos of that observation).
 Answers (YES/NO/N/A) are left blank for the inspector; the Observation box is ticked.
@@ -32,6 +35,15 @@ def load_form(path):
     return {'key': key, 'num2qid': {v: k for k, v in nums.items()}, 'title': title}
 
 
+DP_FORMS = ('OVID-DP-OPERATIONS-MOBILE.html', 'INSPECTARE-500M-MOBILE.html', 'INSPECTARE-500M-ASSET-MOBILE.html')
+
+
+def synergi_label(title):
+    if title.startswith('OVID -- '):
+        return title.replace(' -- ', ' - ', 1)
+    return title.replace(' -- ', ' ', 1)
+
+
 def main(zpath, mpath, forms_dir, out):
     z = zipfile.ZipFile(zpath)
     insp = json.loads(z.read('inspection.json').decode('utf-8'))
@@ -47,6 +59,9 @@ def main(zpath, mpath, forms_dir, out):
                      'inspector': mapping.get('inspector', ''), 'port': insp.get('location', ''),
                      'status': 'In Progress'},
             'answers': {}, 'obs': {}, 'comments': {}, 'photos': {}, '_num2qid': info['num2qid'],
+            'synergi': dict({'type': 'DP Inspection' if f in DP_FORMS else 'Marine Inspection',
+                             'label': synergi_label(info['title']), 'items': {}},
+                            **mapping.get('synergi', {}).get(f, {})),
         }
 
     errors = []
@@ -62,6 +77,9 @@ def main(zpath, mpath, forms_dir, out):
         if not o:
             errors.append('observation %s not found' % it['obs']); continue
         used_obs.add(it['obs'])
+        if not it.get('subject'):
+            errors.append('missing subject for %s %s' % (it['form'], it['q'])); continue
+        fm['synergi']['items'][qid] = {'subject': it['subject'].strip(), 'action': it.get('action', '').strip()}
         fm['obs'][qid] = True
         prev = fm['comments'].get(qid)
         fm['comments'][qid] = (prev + '\n' if prev else '') + it['comment'].strip()
@@ -78,6 +96,7 @@ def main(zpath, mpath, forms_dir, out):
         del fm['_num2qid']
     draft = {
         'format': 'tepa-report-draft', 'version': 1,
+        'id': '%s|%s|%s' % (insp['vesselName'], insp['inspectionDate'], insp['checklist']),
         'vesselName': insp['vesselName'], 'checklist': insp['checklist'],
         'inspectionDate': insp['inspectionDate'],
         'forms': [forms[f] for f in insp['forms']],
