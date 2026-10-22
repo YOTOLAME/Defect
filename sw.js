@@ -1,4 +1,4 @@
-var CACHE_NAME = 'defect-capture-v7';
+var CACHE_NAME = 'defect-capture-v8';
 var FILES = ['./', './index.html'].concat([
   '../inspections/INSPECTARE-500M-ASSET-MOBILE.html',
   '../inspections/INSPECTARE-500M-MOBILE.html',

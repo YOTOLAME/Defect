@@ -826,6 +826,10 @@ function showDraftResult(d, done, failed, boxId) {
     h += '<a class="btn btn-primary btn-block" style="margin-top:8px" href="' + FORMS_BASE + encodeURI(fm.file) + '">' +
       esc(fm.title || fm.file) + ' (' + countKeys(fm.comments) + ' comment(s))</a>';
   }
+  if (d.remarks && d.remarks.length) {
+    h += '<div class="hint" style="margin-top:8px"><b>AI remarks to check:</b></div>';
+    for (var r = 0; r < d.remarks.length; r++) { h += '<div class="hint">- ' + esc(d.remarks[r]) + '</div>'; }
+  }
   for (var j = 0; j < failed.length; j++) {
     h += '<div class="hint" style="color:#8a2b1f">Not loaded (storage full?): ' + esc(failed[j].title || failed[j].file) + '</div>';
   }
@@ -952,7 +956,7 @@ $('btnAiLoad').onclick = function () {
       };
       byFile[inf.file] = fm; forms.push(fm);
     }
-    var errors = [], jobs = [];
+    var errors = [], jobs = [], remarks = [];
     for (i = 0; i < ai.items.length; i++) {
       var it = ai.items[i], f = byFile[it.form];
       var o = s.observations[(parseInt(it.obs, 10) || 0) - 1];
@@ -961,6 +965,7 @@ $('btnAiLoad').onclick = function () {
       if (!qid) { errors.push('Item ' + (i + 1) + ': question ' + it.q + ' not found'); continue; }
       if (!o) { errors.push('Item ' + (i + 1) + ': observation ' + it.obs + ' not found'); continue; }
       var c = String(it.comment || '').replace(/^\s+|\s+$/g, '');
+      if (it.remark && String(it.remark).replace(/\s+/g, '')) { remarks.push('Obs ' + it.obs + ' / Q' + it.q + ': ' + it.remark); }
       f.obs[qid] = true;
       f.comments[qid] = f.comments[qid] ? f.comments[qid] + '\n' + c : c;
       if (!f.synergi.items[qid]) {
@@ -983,7 +988,7 @@ $('btnAiLoad').onclick = function () {
     function done() {
       for (var m = 0; m < forms.length; m++) { delete forms[m]._info; }
       var d = { format: 'tepa-report-draft', version: 1, id: s.vesselName + '|' + s.date + '|' + typeLabel(s),
-        vesselName: s.vesselName, checklist: typeLabel(s), inspectionDate: s.date, forms: forms };
+        vesselName: s.vesselName, checklist: typeLabel(s), inspectionDate: s.date, forms: forms, remarks: remarks };
       stop();
       applyDraft(d, 'aiBox');
     }
