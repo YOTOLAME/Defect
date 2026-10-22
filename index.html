@@ -97,6 +97,10 @@ a.btn { text-decoration: none; }
       <input type="text" id="inVessel" autocomplete="off" autocapitalize="characters">
     </div>
     <div class="field">
+      <label class="lbl" for="inInspector">Inspector</label>
+      <input type="text" id="inInspector" autocomplete="off" placeholder="SURNAME First name">
+    </div>
+    <div class="field">
       <label class="lbl" for="inLocation">Location</label>
       <input type="text" id="inLocation" autocomplete="off">
     </div>
@@ -147,6 +151,14 @@ a.btn { text-decoration: none; }
       </div>
     </div>
     <div class="hint">Creates one ZIP file (notes, photos, recordings) to attach in Claude for report drafting.</div>
+  </div>
+  <div class="section-header">AI report draft</div>
+  <div class="card">
+    <button class="btn btn-light btn-block" id="btnCopyPrompt" type="button">Copy AI prompt</button>
+    <div class="hint">1. Give the export ZIP and this prompt to your AI assistant. 2. Copy its JSON answer. 3. Paste it below.</div>
+    <textarea id="txtAi" placeholder="Paste the AI answer here" style="margin-top:10px;min-height:90px;font-size:13px"></textarea>
+    <button class="btn btn-primary btn-block" id="btnAiLoad" type="button" style="margin-top:8px">Load into checklist forms</button>
+    <div id="aiBox" class="hidden" style="margin-top:10px"></div>
   </div>
   <button class="btn btn-danger btn-block" id="btnDelSession" type="button">Delete this inspection</button>
 </div>
@@ -468,6 +480,7 @@ $('btnStart').onclick = function () {
     dp: $('chkDp').checked,
     vesselName: name,
     location: $('inLocation').value.replace(/^\s+|\s+$/g, ''),
+    inspector: $('inInspector').value.replace(/^\s+|\s+$/g, ''),
     date: $('inDate').value || todayYMD(),
     observations: []
   };
@@ -476,6 +489,7 @@ $('btnStart').onclick = function () {
   if (!saveData()) { DATA.sessions.shift(); return; }
   setPref('framework', s.framework);
   setPref('vesselType', s.vesselType);
+  setPref('inspector', s.inspector);
   $('inVessel').value = '';
   $('inLocation').value = '';
   requestPersist();
@@ -510,10 +524,13 @@ function renderSession() {
   var s = getSession(cur.sessionId);
   if (!s) { return; }
   resetExport();
+  $('txtAi').value = '';
+  $('aiBox').className = 'hidden';
   $('sessionMeta').innerHTML =
     '<b>Vessel:</b> ' + esc(s.vesselName) + '<br>' +
     '<b>Checklist:</b> ' + esc(typeLabel(s)) + '<br>' +
-    '<b>Date:</b> ' + esc(fmtD(s.date)) + (s.location ? '<br><b>Location:</b> ' + esc(s.location) : '');
+    '<b>Date:</b> ' + esc(fmtD(s.date)) + (s.location ? '<br><b>Location:</b> ' + esc(s.location) : '') +
+    (s.inspector ? '<br><b>Inspector:</b> ' + esc(s.inspector) : '');
   $('obsCount').textContent = 'Observations (' + s.observations.length + ')';
   var box = $('obsList');
   box.innerHTML = '';
@@ -652,6 +669,7 @@ $('btnExport').onclick = function () {
     dp: !!s.dp,
     vesselName: s.vesselName,
     location: s.location,
+    inspector: s.inspector || '',
     inspectionDate: s.date,
     forms: s.forms || sessionForms(s),
     observations: []
@@ -686,8 +704,23 @@ $('btnExport').onclick = function () {
       next();
     });
   }
+  var qset = null;
   function finish() {
+    loadFormsInfo(meta.forms, function (infos, err) {
+      if (infos) {
+        qset = [];
+        for (var x = 0; x < infos.length; x++) {
+          qset.push({ form: infos[x].file, title: infos[x].title, questions: infos[x].questions });
+        }
+      }
+      finish2(err);
+    });
+  }
+  function finish2(qerr) {
+    entries.unshift({ name: 'prompt.txt', data: utf8Bytes(AI_PROMPT) });
+    if (qset) { entries.unshift({ name: 'questions.json', data: utf8Bytes(JSON.stringify(qset, null, 1)) }); }
     entries.unshift({ name: 'inspection.json', data: utf8Bytes(JSON.stringify(meta, null, 2)) });
+    if (qerr) { toast('Checklist questions not available offline: open the tool once with network'); }
     var blob;
     try { blob = buildZip(entries); } catch (e) { toast('Export failed'); resetExport(); return; }
     var fname = 'Capture_' + safeName(s.vesselName) + '_' + String(s.date).replace(/-/g, '') + '.zip';
@@ -697,7 +730,8 @@ $('btnExport').onclick = function () {
     lnk.href = exportUrl;
     lnk.setAttribute('download', fname);
     $('exportInfo').innerHTML = '<b>File:</b> ' + esc(fname) + '<br><b>Size:</b> ' + (blob.size / 1048576).toFixed(1) + ' MB - ' +
-      s.observations.length + ' observation(s)' + (missing ? '<br><b>Missing media:</b> ' + missing : '');
+      s.observations.length + ' observation(s)' + (missing ? '<br><b>Missing media:</b> ' + missing : '') +
+      (qset ? '' : '<br><b>Checklist questions missing</b> (no network): export again later');
     var canShare = false;
     try { canShare = !!(navigator.canShare && exportFile.name && navigator.canShare({ files: [exportFile] })); } catch (e) {}
     $('btnShare').className = canShare ? 'btn btn-primary' : 'btn btn-primary hidden';
@@ -758,31 +792,34 @@ $('inDraft').onchange = function () {
     var d;
     try { d = JSON.parse(fr.result); } catch (e) { toast('Not a valid draft file'); return; }
     if (!d || d.format !== 'tepa-report-draft' || !d.forms || !d.forms.length) { toast('Not a valid draft file'); return; }
-    var busy = [];
-    for (var i = 0; i < d.forms.length; i++) {
-      if (formHasData(d.forms[i].storageKey)) { busy.push(d.forms[i].title || d.forms[i].file); }
-    }
-    if (busy.length && !window.confirm('These forms already contain answers on this device and will be replaced:\n- ' + busy.join('\n- ') + '\n\nContinue?')) { return; }
-    var forms = d.forms.slice(0);
-    var done = [], failed = [];
-    function next() {
-      if (!forms.length) { saveDraftSummary(d, done); showDraftResult(d, done, failed); renderDrafts(); return; }
-      var fm = forms.shift();
-      var data = { meta: fm.meta || {}, answers: fm.answers || {}, obs: fm.obs || {}, comments: fm.comments || {} };
-      if (fm.general_obs) { data.general_obs = fm.general_obs; }
-      try { localStorage.setItem(fm.storageKey, JSON.stringify(data)); } catch (e) { failed.push(fm); next(); return; }
-      formDbPut(fm.storageKey, fm.photos || {}, function (ok) {
-        if (ok) { done.push(fm); } else { failed.push(fm); }
-        next();
-      });
-    }
-    next();
+    applyDraft(d, 'draftBox');
   };
   fr.onerror = function () { toast('File could not be read'); };
   fr.readAsText(f);
 };
-function showDraftResult(d, done, failed) {
-  var box = $('draftBox');
+function applyDraft(d, boxId) {
+  var busy = [];
+  for (var i = 0; i < d.forms.length; i++) {
+    if (formHasData(d.forms[i].storageKey)) { busy.push(d.forms[i].title || d.forms[i].file); }
+  }
+  if (busy.length && !window.confirm('These forms already contain answers on this device and will be replaced:\n- ' + busy.join('\n- ') + '\n\nContinue?')) { return; }
+  var forms = d.forms.slice(0);
+  var done = [], failed = [];
+  function next() {
+    if (!forms.length) { saveDraftSummary(d, done); showDraftResult(d, done, failed, boxId); renderDrafts(); return; }
+    var fm = forms.shift();
+    var data = { meta: fm.meta || {}, answers: fm.answers || {}, obs: fm.obs || {}, comments: fm.comments || {} };
+    if (fm.general_obs) { data.general_obs = fm.general_obs; }
+    try { localStorage.setItem(fm.storageKey, JSON.stringify(data)); } catch (e) { failed.push(fm); next(); return; }
+    formDbPut(fm.storageKey, fm.photos || {}, function (ok) {
+      if (ok) { done.push(fm); } else { failed.push(fm); }
+      next();
+    });
+  }
+  next();
+}
+function showDraftResult(d, done, failed, boxId) {
+  var box = $(boxId || 'draftBox');
   var h = '<div class="meta"><b>Vessel:</b> ' + esc(d.vesselName || '') + '<br><b>Checklist:</b> ' + esc(d.checklist || '') + '</div>';
   for (var i = 0; i < done.length; i++) {
     var fm = done[i];
@@ -796,6 +833,163 @@ function showDraftResult(d, done, failed) {
   box.className = '';
   toast(done.length + ' form(s) loaded');
 }
+
+/* ---------- CHECKLIST INFO (read from the form files) ---------- */
+var formInfoCache = {};
+function parseFormInfo(file, html) {
+  var key = /var STORAGE_KEY = "([^"]+)"/.exec(html);
+  var nums = /var Q_NUMS = (\{[\s\S]*?\});/.exec(html);
+  var texts = /var Q_TEXTS = (\{[\s\S]*?\});/.exec(html);
+  var title = /<title>([\s\S]*?)<\/title>/.exec(html);
+  if (!key || !nums || !texts) { return null; }
+  var N = JSON.parse(nums[1]), T = JSON.parse(texts[1]);
+  var tt = document.createElement('textarea');
+  tt.innerHTML = title ? title[1] : file;
+  var info = { file: file, storageKey: key[1], title: tt.value.replace(/^\s+|\s+$/g, ''), questions: [], qids: {} };
+  for (var qid in N) {
+    info.questions.push({ q: N[qid], text: T[qid] || '' });
+    info.qids[N[qid]] = qid;
+  }
+  return info;
+}
+function loadFormsInfo(files, cb) {
+  var out = [], list = files.slice(0);
+  function next() {
+    if (!list.length) { cb(out, null); return; }
+    var f = list.shift();
+    if (formInfoCache[f]) { out.push(formInfoCache[f]); next(); return; }
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', FORMS_BASE + f, true);
+    xhr.onload = function () {
+      var info = (xhr.status === 200 || xhr.status === 0) ? parseFormInfo(f, xhr.responseText) : null;
+      if (!info) { cb(null, 'read'); return; }
+      formInfoCache[f] = info; out.push(info); next();
+    };
+    xhr.onerror = function () { cb(null, 'network'); };
+    xhr.send();
+  }
+  next();
+}
+
+/* ---------- AI PROMPT + AI ANSWER IMPORT ---------- */
+var AI_PROMPT = [
+  'You are assisting a marine vessel inspector (OVID / Inspectare checklists).',
+  '',
+  'The attached ZIP was exported by the Field Capture tool. It contains:',
+  '- inspection.json: vessel, checklist, inspection date and the field observations (short notes in French or English, photo file names).',
+  '- questions.json: the complete list of checklist questions for this inspection (form file, question number "q", question text).',
+  '- photos/: the photos of each observation.',
+  '',
+  'TASK: for each observation, choose the checklist question closest to the anomaly and write the finding.',
+  '',
+  'RULES',
+  '1. Use only questions listed in questions.json. Give the exact form file name ("form") and question number ("q") as written there.',
+  '2. One item per observation. If one observation clearly contains two different anomalies, create two items with the same "obs" number.',
+  '3. "comment": English, past tense, factual, OVID style. Describe only what was observed. No judgement of acceptability, no recommendation. One or two short sentences. Example: "The aft starboard liquid bulk manifold was not labelled and the manifold valves were found corroded."',
+  '4. Use the photos only to confirm details. Do not add facts that are not in the note or clearly visible.',
+  '5. "subject": short title of 3 to 6 words in Title Case, e.g. "Liquid Bulk Manifold Condition".',
+  '6. "action": one sentence starting with "CTR to" and ending with "and provide evidence."',
+  '7. "remark": empty, or a short note to the inspector if the chosen question is a weak match or the note is unclear.',
+  '',
+  'OUTPUT: only the JSON below, nothing before or after it:',
+  '{"items":[{"obs":1,"form":"INSPECTARE-PSV-MOBILE.html","q":"12.41","comment":"...","subject":"...","action":"CTR to ... and provide evidence.","remark":""}]}'
+].join('\n');
+
+function copyText(t) {
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = t; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, t.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    toast(ok ? 'Prompt copied' : 'Copy failed');
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () { toast('Prompt copied'); }, fallback);
+      return;
+    }
+  } catch (e) {}
+  fallback();
+}
+$('btnCopyPrompt').onclick = function () { copyText(AI_PROMPT); };
+
+var DP_FORMS = { 'OVID-DP-OPERATIONS-MOBILE.html': 1, 'INSPECTARE-500M-MOBILE.html': 1, 'INSPECTARE-500M-ASSET-MOBILE.html': 1 };
+function synergiLabel(title) {
+  if (title.indexOf('OVID -- ') === 0) { return title.replace(' -- ', ' - '); }
+  return title.replace(' -- ', ' ');
+}
+function parseAiAnswer(txt) {
+  var a = txt.indexOf('{'), b = txt.lastIndexOf('}');
+  if (a < 0 || b <= a) { return null; }
+  try {
+    var d = JSON.parse(txt.substring(a, b + 1).replace(/[\u201c\u201d]/g, '"'));
+    return d && d.items && d.items.length ? d : null;
+  } catch (e) { return null; }
+}
+$('btnAiLoad').onclick = function () {
+  var s = getSession(cur.sessionId);
+  if (!s) { return; }
+  var ai = parseAiAnswer($('txtAi').value);
+  if (!ai) { toast('No valid AI answer found (JSON with "items")'); return; }
+  var btn = $('btnAiLoad');
+  btn.disabled = true; btn.textContent = 'Loading...';
+  function stop(msg) { btn.disabled = false; btn.textContent = 'Load into checklist forms'; if (msg) { toast(msg); } }
+  var files = s.forms || sessionForms(s);
+  loadFormsInfo(files, function (infos, err) {
+    if (!infos) { stop('Checklist forms not reachable: connect to the network and retry'); return; }
+    var byFile = {}, forms = [], i;
+    for (i = 0; i < infos.length; i++) {
+      var inf = infos[i];
+      var fm = {
+        file: inf.file, storageKey: inf.storageKey, title: inf.title,
+        meta: { vessel: s.vesselName, insp_date: s.date, inspector: s.inspector || '', port: s.location || '', status: 'In Progress' },
+        answers: {}, obs: {}, comments: {}, photos: {},
+        synergi: { type: DP_FORMS[inf.file] ? 'DP Inspection' : 'Marine Inspection', label: synergiLabel(inf.title), items: {} },
+        _info: inf
+      };
+      byFile[inf.file] = fm; forms.push(fm);
+    }
+    var errors = [], jobs = [];
+    for (i = 0; i < ai.items.length; i++) {
+      var it = ai.items[i], f = byFile[it.form];
+      var o = s.observations[(parseInt(it.obs, 10) || 0) - 1];
+      if (!f) { errors.push('Item ' + (i + 1) + ': form ' + it.form + ' not in this inspection'); continue; }
+      var qid = f._info.qids[String(it.q)];
+      if (!qid) { errors.push('Item ' + (i + 1) + ': question ' + it.q + ' not found'); continue; }
+      if (!o) { errors.push('Item ' + (i + 1) + ': observation ' + it.obs + ' not found'); continue; }
+      var c = String(it.comment || '').replace(/^\s+|\s+$/g, '');
+      f.obs[qid] = true;
+      f.comments[qid] = f.comments[qid] ? f.comments[qid] + '\n' + c : c;
+      if (!f.synergi.items[qid]) {
+        f.synergi.items[qid] = { subject: String(it.subject || '').replace(/^\s+|\s+$/g, ''), action: String(it.action || '').replace(/^\s+|\s+$/g, '') };
+      }
+      for (var k = 0; k < o.photos.length; k++) { jobs.push({ form: f, qid: qid, id: o.photos[k] }); }
+    }
+    if (errors.length && !window.confirm('Some items were skipped:\n- ' + errors.join('\n- ') + '\n\nLoad the others?')) { stop(); return; }
+    function nextPhoto() {
+      if (!jobs.length) { done(); return; }
+      var j = jobs.shift();
+      mediaGet(j.id, function (r) {
+        if (r && r.data) {
+          var arr = j.form.photos[j.qid] || (j.form.photos[j.qid] = []);
+          if (arr.indexOf(r.data) < 0) { arr.push(r.data); }
+        }
+        nextPhoto();
+      });
+    }
+    function done() {
+      for (var m = 0; m < forms.length; m++) { delete forms[m]._info; }
+      var d = { format: 'tepa-report-draft', version: 1, id: s.vesselName + '|' + s.date + '|' + typeLabel(s),
+        vesselName: s.vesselName, checklist: typeLabel(s), inspectionDate: s.date, forms: forms };
+      stop();
+      applyDraft(d, 'aiBox');
+    }
+    nextPhoto();
+  });
+};
 
 /* ---------- REPORT DRAFTS + SYNERGI EXCEL EXPORT ---------- */
 var LS_DRAFTS = 'tepa-report-drafts';
@@ -1298,6 +1492,7 @@ function init() {
   fillTypes();
   if (p.vesselType && findType($('selFramework').value, p.vesselType)) { $('selType').value = p.vesselType; updateDp(); }
   $('inDate').value = todayYMD();
+  if (p.inspector) { $('inInspector').value = p.inspector; }
   goHome();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')['catch'](function () {});

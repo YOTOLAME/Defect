@@ -1,5 +1,23 @@
-var CACHE_NAME = 'defect-capture-v5';
-var FILES = ['./', './index.html'];
+var CACHE_NAME = 'defect-capture-v6';
+var FILES = ['./', './index.html'].concat([
+  '../inspections/INSPECTARE-500M-ASSET-MOBILE.html',
+  '../inspections/INSPECTARE-500M-MOBILE.html',
+  '../inspections/INSPECTARE-AHTS-MOBILE.html',
+  '../inspections/INSPECTARE-CREWBOAT-MOBILE.html',
+  '../inspections/INSPECTARE-PSV-MOBILE.html',
+  '../inspections/INSPECTARE-TUG-MOBILE.html',
+  '../inspections/OVID-AHTS-TUG-OPERATIONS-MOBILE.html',
+  '../inspections/OVID-BARGE-OPERATIONS-MOBILE.html',
+  '../inspections/OVID-COMMON-PART1-MOBILE.html',
+  '../inspections/OVID-COMMON-PART2-MOBILE.html',
+  '../inspections/OVID-COMMON-PART3-MOBILE.html',
+  '../inspections/OVID-COMMON-PART4-MOBILE.html',
+  '../inspections/OVID-CREWBOAT-PART1-MOBILE.html',
+  '../inspections/OVID-CREWBOAT-PART2-MOBILE.html',
+  '../inspections/OVID-DP-OPERATIONS-MOBILE.html',
+  '../inspections/OVID-MPSV-OPERATIONS-MOBILE.html',
+  '../inspections/OVID-PSV-OPERATIONS-MOBILE.html'
+]);
 
 self.addEventListener('install', function(e) {
   e.waitUntil(caches.open(CACHE_NAME).then(function(cache) { return cache.addAll(FILES); }));
