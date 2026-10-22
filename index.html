@@ -893,7 +893,8 @@ function exportSynergi(dr) {
     qids.sort(qidCmp);
     for (var j = 0; j < qids.length; j++) {
       var qid = qids[j], it = items[qid] || {};
-      var subj = String(it.subject || ('Question ' + qid.replace(/^q/, '').replace(/_/g, '.'))).replace(/[\s.]+$/, '');
+      var qnum = qid.replace(/^q/, '').replace(/_/g, '.');
+      var subj = it.subject ? String(it.subject).replace(/[\s.]+$/, '') + ' (Q' + qnum + ')' : 'Question ' + qnum;
       var com = String(cm[qid] || '').replace(/\s*\n+\s*/g, ' ').replace(/^\s+|\s+$/g, '');
       var f = subj + '. > ' + dsp + ' - TEPA DP NAV-DP1 COMMENT: ' + com;
       if (it.action) { f += ' --> ' + String(it.action).replace(/^\s+|\s+$/g, ''); }

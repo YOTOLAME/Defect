@@ -1,4 +1,4 @@
-var CACHE_NAME = 'defect-capture-v4';
+var CACHE_NAME = 'defect-capture-v5';
 var FILES = ['./', './index.html'];
 
 self.addEventListener('install', function(e) {
