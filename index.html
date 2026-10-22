@@ -31,6 +31,7 @@ textarea { min-height: 140px; resize: vertical; }
 .btn-danger { background: #f4e6e4; color: #8a2b1f; }
 .btn-rec { background: #8a2b1f; color: #fff; }
 .btn-block { width: 100%; }
+a.btn { text-decoration: none; }
 .btn[disabled] { opacity: 0.4; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; }
@@ -119,6 +120,18 @@ textarea { min-height: 140px; resize: vertical; }
   <button class="btn btn-primary btn-block" id="btnNewObs" type="button">+ New observation</button>
   <div class="section-header" id="obsCount">Observations</div>
   <div id="obsList"></div>
+  <div class="section-header">Export</div>
+  <div class="card">
+    <button class="btn btn-light btn-block" id="btnExport" type="button">Prepare export file</button>
+    <div id="exportBox" class="hidden" style="margin-top:10px">
+      <div class="meta" id="exportInfo"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-primary" id="btnShare" type="button">Share / Save</button>
+        <a class="btn btn-light" id="lnkDownload" href="#" download="capture.zip">Download</a>
+      </div>
+    </div>
+    <div class="hint">Creates one ZIP file (notes, photos, recordings) to attach in Claude for report drafting.</div>
+  </div>
   <button class="btn btn-danger btn-block" id="btnDelSession" type="button">Delete this inspection</button>
 </div>
 
@@ -479,6 +492,7 @@ function renderHome() {
 function renderSession() {
   var s = getSession(cur.sessionId);
   if (!s) { return; }
+  resetExport();
   $('sessionMeta').innerHTML =
     '<b>Vessel:</b> ' + esc(s.vesselName) + '<br>' +
     '<b>Checklist:</b> ' + esc(typeLabel(s)) + '<br>' +
@@ -534,6 +548,153 @@ $('btnDelSession').onclick = function () {
   DATA.sessions.splice(DATA.sessions.indexOf(s), 1);
   saveData();
   mediaDel(ids, function () { goHome(); });
+};
+
+/* ---------- EXPORT (ZIP, store method, no library) ---------- */
+var CRC_TABLE = null;
+function crc32(u8) {
+  var c, i, k;
+  if (!CRC_TABLE) {
+    CRC_TABLE = [];
+    for (i = 0; i < 256; i++) {
+      c = i;
+      for (k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+      CRC_TABLE[i] = c >>> 0;
+    }
+  }
+  c = 0xFFFFFFFF;
+  for (i = 0; i < u8.length; i++) { c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); }
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function utf8Bytes(s) {
+  var b = unescape(encodeURIComponent(s));
+  var u = new Uint8Array(b.length);
+  for (var i = 0; i < b.length; i++) { u[i] = b.charCodeAt(i); }
+  return u;
+}
+function dataUrlBytes(d) {
+  var b = atob(d.substr(d.indexOf(',') + 1));
+  var u = new Uint8Array(b.length);
+  for (var i = 0; i < b.length; i++) { u[i] = b.charCodeAt(i); }
+  return u;
+}
+function buildZip(entries) {
+  var now = new Date();
+  var dtime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  var ddate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  var parts = [], central = [], offset = 0, i;
+  function u16(v) { return [v & 0xFF, (v >>> 8) & 0xFF]; }
+  function u32(v) { return [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]; }
+  for (i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    var nm = utf8Bytes(e.name);
+    var crc = crc32(e.data);
+    var sz = e.data.length;
+    var common = [].concat(u16(20), u16(0x0800), u16(0), u16(dtime), u16(ddate), u32(crc), u32(sz), u32(sz), u16(nm.length), u16(0));
+    var lh = new Uint8Array([].concat(u32(0x04034b50), common));
+    parts.push(lh, nm, e.data);
+    var ch = new Uint8Array([].concat(u32(0x02014b50), u16(20), common, u16(0), u16(0), u16(0), u32(0), u32(offset)));
+    central.push(ch, nm);
+    offset += lh.length + nm.length + sz;
+  }
+  var cdSize = 0;
+  for (i = 0; i < central.length; i++) { cdSize += central[i].length; }
+  var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length), u32(cdSize), u32(offset), u16(0)));
+  return new Blob(parts.concat(central, [end]), { type: 'application/zip' });
+}
+function safeName(s) { return String(s).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'vessel'; }
+function audioExt(m) {
+  if (/mp4|aac|m4a/.test(m)) { return 'm4a'; }
+  if (/webm/.test(m)) { return 'webm'; }
+  if (/ogg/.test(m)) { return 'ogg'; }
+  return 'bin';
+}
+var exportFile = null, exportUrl = null;
+function resetExport() {
+  if (exportUrl) { try { URL.revokeObjectURL(exportUrl); } catch (e) {} }
+  exportFile = null; exportUrl = null;
+  $('exportBox').className = 'hidden';
+  $('btnExport').disabled = false;
+  $('btnExport').textContent = 'Prepare export file';
+}
+$('btnExport').onclick = function () {
+  var s = getSession(cur.sessionId);
+  if (!s) { return; }
+  if (!s.observations.length) { toast('No observation to export'); return; }
+  resetExport();
+  $('btnExport').disabled = true;
+  $('btnExport').textContent = 'Preparing...';
+  var entries = [];
+  var meta = {
+    format: 'tepa-field-capture',
+    version: 1,
+    exported: new Date().toISOString(),
+    framework: s.framework,
+    checklist: typeLabel(s),
+    vesselType: s.vesselType,
+    dp: !!s.dp,
+    vesselName: s.vesselName,
+    location: s.location,
+    inspectionDate: s.date,
+    forms: s.forms || sessionForms(s),
+    observations: []
+  };
+  var jobs = [];
+  for (var i = 0; i < s.observations.length; i++) {
+    var o = s.observations[i];
+    var no = pad(i + 1);
+    var mo = { no: i + 1, created: o.created, updated: o.updated, note: o.text || '', photos: [], recordings: [] };
+    for (var p = 0; p < o.photos.length; p++) {
+      var pf = 'photos/obs' + no + '_' + (p + 1) + '.jpg';
+      mo.photos.push(pf);
+      jobs.push({ id: o.photos[p], file: pf, kind: 'photo' });
+    }
+    for (var a = 0; a < o.audios.length; a++) {
+      var af = 'audio/obs' + no + '_' + (a + 1) + '.' + audioExt(o.audios[a].mime || '');
+      mo.recordings.push({ file: af, seconds: o.audios[a].duration || 0 });
+      jobs.push({ id: o.audios[a].id, file: af, kind: 'audio' });
+    }
+    meta.observations.push(mo);
+  }
+  var missing = 0;
+  function next() {
+    if (!jobs.length) { finish(); return; }
+    var j = jobs.shift();
+    mediaGet(j.id, function (r) {
+      if (r && r.data) {
+        try {
+          entries.push({ name: j.file, data: j.kind === 'photo' ? dataUrlBytes(r.data) : new Uint8Array(r.data) });
+        } catch (e) { missing++; }
+      } else { missing++; }
+      next();
+    });
+  }
+  function finish() {
+    entries.unshift({ name: 'inspection.json', data: utf8Bytes(JSON.stringify(meta, null, 2)) });
+    var blob;
+    try { blob = buildZip(entries); } catch (e) { toast('Export failed'); resetExport(); return; }
+    var fname = 'Capture_' + safeName(s.vesselName) + '_' + String(s.date).replace(/-/g, '') + '.zip';
+    try { exportFile = new File([blob], fname, { type: 'application/zip' }); } catch (e) { exportFile = blob; }
+    exportUrl = URL.createObjectURL(blob);
+    var lnk = $('lnkDownload');
+    lnk.href = exportUrl;
+    lnk.setAttribute('download', fname);
+    $('exportInfo').innerHTML = '<b>File:</b> ' + esc(fname) + '<br><b>Size:</b> ' + (blob.size / 1048576).toFixed(1) + ' MB - ' +
+      s.observations.length + ' observation(s)' + (missing ? '<br><b>Missing media:</b> ' + missing : '');
+    var canShare = false;
+    try { canShare = !!(navigator.canShare && exportFile.name && navigator.canShare({ files: [exportFile] })); } catch (e) {}
+    $('btnShare').className = canShare ? 'btn btn-primary' : 'btn btn-primary hidden';
+    $('exportBox').className = '';
+    $('btnExport').disabled = false;
+    $('btnExport').textContent = 'Prepare export file again';
+  }
+  next();
+};
+$('btnShare').onclick = function () {
+  if (!exportFile) { return; }
+  navigator.share({ files: [exportFile], title: exportFile.name })['catch'](function (e) {
+    if (e && e.name !== 'AbortError') { toast('Share failed: use Download'); }
+  });
 };
 
 /* ---------- OBSERVATION ---------- */
