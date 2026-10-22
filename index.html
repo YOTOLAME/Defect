@@ -112,6 +112,14 @@ a.btn { text-decoration: none; }
   <div class="section-header">Inspections on this device</div>
   <div id="sessionList"></div>
   <div class="status-line" id="storageInfo"></div>
+
+  <div class="section-header">Report draft</div>
+  <div class="card">
+    <label class="btn btn-light btn-block" for="inDraft">Import report draft</label>
+    <input class="filein" type="file" id="inDraft" accept=".json,application/json">
+    <div id="draftBox" class="hidden" style="margin-top:10px"></div>
+    <div class="hint">Loads the draft into the checklist forms on this device. Then open each form to tick YES / NO / N/A, edit comments and export the PDF.</div>
+  </div>
 </div>
 
 <!-- SESSION -->
@@ -696,6 +704,89 @@ $('btnShare').onclick = function () {
     if (e && e.name !== 'AbortError') { toast('Share failed: use Download'); }
   });
 };
+
+/* ---------- REPORT DRAFT IMPORT (writes into checklist forms storage) ---------- */
+var FORMS_BASE = '/inspections/';
+var FORM_DB = 'inspectare-photos';
+function formDbPut(key, photos, cb) {
+  var req;
+  try { req = indexedDB.open(FORM_DB, 1); } catch (e) { cb(false); return; }
+  req.onupgradeneeded = function (e) {
+    var d = e.target.result;
+    if (!d.objectStoreNames.contains('photos')) { d.createObjectStore('photos'); }
+  };
+  req.onsuccess = function (e) {
+    var d = e.target.result;
+    try {
+      var tx = d.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put(photos, key);
+      tx.oncomplete = function () { d.close(); cb(true); };
+      tx.onerror = function () { d.close(); cb(false); };
+      tx.onabort = function () { d.close(); cb(false); };
+    } catch (err) { d.close(); cb(false); }
+  };
+  req.onerror = function () { cb(false); };
+}
+function formHasData(key) {
+  try {
+    var raw = localStorage.getItem(key);
+    if (!raw) { return false; }
+    var d = JSON.parse(raw);
+    var k;
+    for (k in (d.answers || {})) { return true; }
+    for (k in (d.comments || {})) { return true; }
+    for (k in (d.obs || {})) { return true; }
+    return false;
+  } catch (e) { return false; }
+}
+function countKeys(o) { var n = 0; for (var k in (o || {})) { n++; } return n; }
+$('inDraft').onchange = function () {
+  var f = this.files && this.files[0];
+  this.value = '';
+  if (!f) { return; }
+  var fr = new FileReader();
+  fr.onload = function () {
+    var d;
+    try { d = JSON.parse(fr.result); } catch (e) { toast('Not a valid draft file'); return; }
+    if (!d || d.format !== 'tepa-report-draft' || !d.forms || !d.forms.length) { toast('Not a valid draft file'); return; }
+    var busy = [];
+    for (var i = 0; i < d.forms.length; i++) {
+      if (formHasData(d.forms[i].storageKey)) { busy.push(d.forms[i].title || d.forms[i].file); }
+    }
+    if (busy.length && !window.confirm('These forms already contain answers on this device and will be replaced:\n- ' + busy.join('\n- ') + '\n\nContinue?')) { return; }
+    var forms = d.forms.slice(0);
+    var done = [], failed = [];
+    function next() {
+      if (!forms.length) { showDraftResult(d, done, failed); return; }
+      var fm = forms.shift();
+      var data = { meta: fm.meta || {}, answers: fm.answers || {}, obs: fm.obs || {}, comments: fm.comments || {} };
+      if (fm.general_obs) { data.general_obs = fm.general_obs; }
+      try { localStorage.setItem(fm.storageKey, JSON.stringify(data)); } catch (e) { failed.push(fm); next(); return; }
+      formDbPut(fm.storageKey, fm.photos || {}, function (ok) {
+        if (ok) { done.push(fm); } else { failed.push(fm); }
+        next();
+      });
+    }
+    next();
+  };
+  fr.onerror = function () { toast('File could not be read'); };
+  fr.readAsText(f);
+};
+function showDraftResult(d, done, failed) {
+  var box = $('draftBox');
+  var h = '<div class="meta"><b>Vessel:</b> ' + esc(d.vesselName || '') + '<br><b>Checklist:</b> ' + esc(d.checklist || '') + '</div>';
+  for (var i = 0; i < done.length; i++) {
+    var fm = done[i];
+    h += '<a class="btn btn-primary btn-block" style="margin-top:8px" href="' + FORMS_BASE + encodeURI(fm.file) + '">' +
+      esc(fm.title || fm.file) + ' (' + countKeys(fm.comments) + ' comment(s))</a>';
+  }
+  for (var j = 0; j < failed.length; j++) {
+    h += '<div class="hint" style="color:#8a2b1f">Not loaded (storage full?): ' + esc(failed[j].title || failed[j].file) + '</div>';
+  }
+  box.innerHTML = h;
+  box.className = '';
+  toast(done.length + ' form(s) loaded');
+}
 
 /* ---------- OBSERVATION ---------- */
 var objUrls = [];
