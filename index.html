@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Field Capture">
+<title>Field Capture &ndash; TEPA</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; color: #1a2a3a; -webkit-text-size-adjust: 100%; }
+.header { background: #003B6E; color: #fff; padding: 16px 16px 14px; padding-top: calc(16px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
+.header .back { color: #fff; text-decoration: none; font-size: 18px; padding: 4px 8px 4px 0; background: none; border: 0; cursor: pointer; }
+.header h1 { font-size: 18px; font-weight: 700; }
+.header p { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+.view { padding: 16px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
+.hidden { display: none !important; }
+.section-header { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #888; margin: 6px 4px 0; }
+.card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); padding: 14px; }
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+.field label.lbl { display: block; font-size: 12px; font-weight: 700; color: #555; margin-bottom: 4px; }
+input[type=text], input[type=date], select, textarea { width: 100%; font-size: 16px; padding: 10px; border: 1px solid #ccd3db; border-radius: 8px; background: #fff; color: #1a2a3a; font-family: inherit; }
+textarea { min-height: 140px; resize: vertical; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.chk input { width: 20px; height: 20px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 700; padding: 12px 14px; border-radius: 8px; border: 0; cursor: pointer; text-align: center; -webkit-appearance: none; }
+.btn-primary { background: #003B6E; color: #fff; }
+.btn-light { background: #e8f4fd; color: #003B6E; }
+.btn-danger { background: #f4e6e4; color: #8a2b1f; }
+.btn-rec { background: #8a2b1f; color: #fff; }
+.btn-block { width: 100%; }
+.btn[disabled] { opacity: 0.4; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+.hint { font-size: 12px; color: #777; margin-top: 6px; line-height: 1.4; }
+.badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; display: inline-block; }
+.badge-inspectare { background: #e8f4fd; color: #003B6E; }
+.badge-ovid { background: #f3ece4; color: #6b4a1f; }
+.item { display: flex; gap: 12px; align-items: center; cursor: pointer; }
+.item .thumb { width: 64px; height: 64px; border-radius: 6px; background: #e6eaee; flex: none; object-fit: cover; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #999; overflow: hidden; }
+.item .thumb img { width: 64px; height: 64px; object-fit: cover; display: block; }
+.item .txt { flex: 1; min-width: 0; }
+.item .t1 { font-size: 15px; font-weight: 700; }
+.item .t2 { font-size: 12px; color: #777; margin-top: 2px; }
+.item .t3 { font-size: 13px; color: #333; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.photos .ph { position: relative; padding-top: 100%; border-radius: 6px; overflow: hidden; background: #e6eaee; }
+.photos .ph img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.photos .ph button { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 14px; border: 0; background: rgba(0,0,0,0.6); color: #fff; font-size: 14px; cursor: pointer; }
+.filein { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.audio-item { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.audio-item audio { flex: 1; min-width: 0; height: 40px; }
+.audio-item button { flex: none; }
+.rec-status { font-size: 14px; font-weight: 700; color: #8a2b1f; margin-top: 8px; }
+.empty { text-align: center; color: #999; font-size: 14px; padding: 20px 0; }
+.status-line { font-size: 12px; color: #777; text-align: center; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); background: #1a2a3a; color: #fff; padding: 12px 14px; border-radius: 8px; font-size: 14px; z-index: 50; text-align: center; }
+.meta { font-size: 13px; line-height: 1.6; }
+.meta b { color: #555; }
+.viewer { position: fixed; inset: 0; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 40; display: flex; align-items: center; justify-content: center; }
+.viewer img { max-width: 100%; max-height: 100%; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <button class="back" id="btnBack" type="button">&#9664;</button>
+  <div>
+    <h1 id="hdrTitle">Field Capture</h1>
+    <p id="hdrSub">TotalEnergies E&amp;P Angola &ndash; Offline observation capture</p>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="viewHome" class="view">
+  <div class="section-header">New inspection</div>
+  <div class="card">
+    <div class="field">
+      <label class="lbl" for="selFramework">Checklist</label>
+      <select id="selFramework">
+        <option value="inspectare">Inspectare &ndash; TEPA checklist</option>
+        <option value="ovid">OVID &ndash; OVIQ4</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="lbl" for="selType">Vessel type</label>
+      <select id="selType"></select>
+    </div>
+    <div class="field" id="fldDp">
+      <label class="chk"><input type="checkbox" id="chkDp"> DP vessel (add DP Operations, OVIQ4 Ch.15)</label>
+    </div>
+    <div class="field">
+      <label class="lbl" for="inVessel">Vessel name</label>
+      <input type="text" id="inVessel" autocomplete="off" autocapitalize="characters">
+    </div>
+    <div class="field">
+      <label class="lbl" for="inLocation">Location</label>
+      <input type="text" id="inLocation" autocomplete="off">
+    </div>
+    <div class="field">
+      <label class="lbl" for="inDate">Inspection date</label>
+      <input type="date" id="inDate">
+    </div>
+    <div class="field">
+      <button class="btn btn-primary btn-block" id="btnStart" type="button">Start capture</button>
+    </div>
+  </div>
+
+  <div class="section-header">Inspections on this device</div>
+  <div id="sessionList"></div>
+  <div class="status-line" id="storageInfo"></div>
+</div>
+
+<!-- SESSION -->
+<div id="viewSession" class="view hidden">
+  <div class="card meta" id="sessionMeta"></div>
+  <button class="btn btn-primary btn-block" id="btnNewObs" type="button">+ New observation</button>
+  <div class="section-header" id="obsCount">Observations</div>
+  <div id="obsList"></div>
+  <button class="btn btn-danger btn-block" id="btnDelSession" type="button">Delete this inspection</button>
+</div>
+
+<!-- OBSERVATION -->
+<div id="viewObs" class="view hidden">
+  <div class="status-line" id="obsStamp"></div>
+
+  <div class="section-header">Photos</div>
+  <div class="card">
+    <div class="photos" id="photoGrid"></div>
+    <div class="row">
+      <label class="btn btn-light" for="inCam">Take photo</label>
+      <label class="btn btn-light" for="inLib">From library</label>
+    </div>
+    <input class="filein" type="file" id="inCam" accept="image/*" capture="environment">
+    <input class="filein" type="file" id="inLib" accept="image/*" multiple>
+  </div>
+
+  <div class="section-header">Observation note</div>
+  <div class="card">
+    <textarea id="txtNote" placeholder="Type or dictate (keyboard microphone)"></textarea>
+    <div class="hint">Offline: use the microphone key of the phone keyboard. Free speech, French or English.</div>
+    <div id="liveBox" class="hidden" style="margin-top:10px">
+      <div class="row">
+        <button class="btn btn-light" id="btnLive" type="button">Live dictation (online)</button>
+        <select id="selLang" style="flex:0 0 96px">
+          <option value="en-GB">EN</option>
+          <option value="fr-FR">FR</option>
+        </select>
+      </div>
+      <div class="hint" id="liveStatus"></div>
+    </div>
+  </div>
+
+  <div class="section-header">Voice recording</div>
+  <div class="card">
+    <button class="btn btn-rec btn-block" id="btnRec" type="button">Record</button>
+    <div class="rec-status hidden" id="recStatus"></div>
+    <div id="audioList"></div>
+    <div class="hint" id="recHint">Recording is kept with the observation for later listening. It is not transcribed automatically.</div>
+  </div>
+
+  <div class="row">
+    <button class="btn btn-danger" id="btnDelObs" type="button">Delete</button>
+    <button class="btn btn-primary" id="btnDoneObs" type="button">Done</button>
+  </div>
+</div>
+
+<div id="viewer" class="viewer hidden"><img id="viewerImg" alt=""></div>
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* Field Capture - TEPA. ES5 only, ASCII strings only. */
+var LS_KEY = 'tepa-capture-v1';
+var LS_PREF = 'tepa-capture-prefs';
+var DB_NAME = 'tepa-capture';
+var DB_STORE = 'media';
+var PHOTO_MAX = 1200;
+var PHOTO_Q = 0.6;
+
+var OVID_COMMON = ['OVID-COMMON-PART1-MOBILE.html', 'OVID-COMMON-PART2-MOBILE.html', 'OVID-COMMON-PART3-MOBILE.html', 'OVID-COMMON-PART4-MOBILE.html'];
+var OVID_DP = 'OVID-DP-OPERATIONS-MOBILE.html';
+
+var TYPES = {
+  inspectare: [
+    { id: 'psv', label: 'PSV - Platform Supply Vessel', forms: ['INSPECTARE-PSV-MOBILE.html'] },
+    { id: 'ahts', label: 'AHTS - Anchor Handling Tug Supply', forms: ['INSPECTARE-AHTS-MOBILE.html'] },
+    { id: 'tug', label: 'TUG - Escort / Towing / Pushing', forms: ['INSPECTARE-TUG-MOBILE.html'] },
+    { id: 'crewboat', label: 'Crew Boat', forms: ['INSPECTARE-CREWBOAT-MOBILE.html'] },
+    { id: '500m-vessel', label: '500m Zone Vessel', forms: ['INSPECTARE-500M-MOBILE.html'] },
+    { id: '500m-asset', label: '500m Zone Asset (Installation)', forms: ['INSPECTARE-500M-ASSET-MOBILE.html'] }
+  ],
+  ovid: [
+    { id: 'psv', label: 'PSV', forms: OVID_COMMON.concat(['OVID-PSV-OPERATIONS-MOBILE.html']), dp: true },
+    { id: 'ahts-tug', label: 'AHTS / TUG', forms: OVID_COMMON.concat(['OVID-AHTS-TUG-OPERATIONS-MOBILE.html']), dp: true },
+    { id: 'mpsv', label: 'MPSV', forms: OVID_COMMON.concat(['OVID-MPSV-OPERATIONS-MOBILE.html']), dp: true },
+    { id: 'ctv', label: 'Crew Transfer Vessel (Small Craft)', forms: ['OVID-CREWBOAT-PART1-MOBILE.html', 'OVID-CREWBOAT-PART2-MOBILE.html'], dp: false },
+    { id: 'barge', label: 'Barge (Unmanned)', forms: ['OVID-BARGE-OPERATIONS-MOBILE.html'], dp: false }
+  ]
+};
+var FW_LABEL = { inspectare: 'Inspectare', ovid: 'OVID' };
+
+/* ---------- utils ---------- */
+function $(id) { return document.getElementById(id); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 6); }
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function fmtDT(iso) {
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) { return ''; }
+  return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function fmtD(ymd) {
+  if (!ymd) { return ''; }
+  var p = ymd.split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ymd;
+}
+function todayYMD() {
+  var d = new Date();
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+var toastTimer = null;
+function toast(msg) {
+  var t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast';
+  if (toastTimer) { clearTimeout(toastTimer); }
+  toastTimer = setTimeout(function () { t.className = 'toast hidden'; }, 3000);
+}
+function findType(fw, id) {
+  var list = TYPES[fw] || [];
+  for (var i = 0; i < list.length; i++) { if (list[i].id === id) { return list[i]; } }
+  return null;
+}
+function typeLabel(s) {
+  var t = findType(s.framework, s.vesselType);
+  var lbl = FW_LABEL[s.framework] + ' - ' + (t ? t.label : s.vesselType);
+  if (s.dp) { lbl += ' + DP'; }
+  return lbl;
+}
+function sessionForms(s) {
+  var t = findType(s.framework, s.vesselType);
+  var f = t ? t.forms.slice(0) : [];
+  if (s.framework === 'ovid' && s.dp) { f.push(OVID_DP); }
+  return f;
+}
+
+/* ---------- local storage (metadata) ---------- */
+var DATA = { sessions: [] };
+function loadData() {
+  try {
+    var raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      var d = JSON.parse(raw);
+      if (d && d.sessions) { DATA = d; }
+    }
+  } catch (e) { DATA = { sessions: [] }; }
+}
+function saveData() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    return true;
+  } catch (e) {
+    toast('Save failed: device storage full');
+    return false;
+  }
+}
+function getPrefs() {
+  try { return JSON.parse(localStorage.getItem(LS_PREF)) || {}; } catch (e) { return {}; }
+}
+function setPref(k, v) {
+  var p = getPrefs();
+  p[k] = v;
+  try { localStorage.setItem(LS_PREF, JSON.stringify(p)); } catch (e) {}
+}
+function getSession(id) {
+  for (var i = 0; i < DATA.sessions.length; i++) { if (DATA.sessions[i].id === id) { return DATA.sessions[i]; } }
+  return null;
+}
+function getObs(s, id) {
+  for (var i = 0; i < s.observations.length; i++) { if (s.observations[i].id === id) { return s.observations[i]; } }
+  return null;
+}
+
+/* ---------- IndexedDB (photos + audio) ---------- */
+var db = null;
+var dbQueue = [];
+function dbOpen() {
+  if (!window.indexedDB) { toast('IndexedDB not available: photos cannot be stored'); return; }
+  var req;
+  try { req = indexedDB.open(DB_NAME, 1); } catch (e) { toast('IndexedDB error'); return; }
+  req.onupgradeneeded = function (e) {
+    var d = e.target.result;
+    if (!d.objectStoreNames.contains(DB_STORE)) { d.createObjectStore(DB_STORE, { keyPath: 'id' }); }
+  };
+  req.onsuccess = function (e) {
+    db = e.target.result;
+    var q = dbQueue; dbQueue = [];
+    for (var i = 0; i < q.length; i++) { q[i](); }
+  };
+  req.onerror = function () { toast('IndexedDB open failed'); };
+}
+function dbReady(fn) { if (db) { fn(); } else { dbQueue.push(fn); } }
+function mediaPut(rec, cb) {
+  dbReady(function () {
+    var tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(rec);
+    tx.oncomplete = function () { if (cb) { cb(true); } };
+    tx.onerror = function () { toast('Media save failed (storage full?)'); if (cb) { cb(false); } };
+    tx.onabort = function () { toast('Media save aborted (storage full?)'); if (cb) { cb(false); } };
+  });
+}
+function mediaGet(id, cb) {
+  dbReady(function () {
+    var tx = db.transaction(DB_STORE, 'readonly');
+    var r = tx.objectStore(DB_STORE).get(id);
+    r.onsuccess = function () { cb(r.result || null); };
+    r.onerror = function () { cb(null); };
+  });
+}
+function mediaDel(ids, cb) {
+  if (!ids || !ids.length) { if (cb) { cb(); } return; }
+  dbReady(function () {
+    var tx = db.transaction(DB_STORE, 'readwrite');
+    var st = tx.objectStore(DB_STORE);
+    for (var i = 0; i < ids.length; i++) { st['delete'](ids[i]); }
+    tx.oncomplete = function () { if (cb) { cb(); } };
+    tx.onerror = function () { if (cb) { cb(); } };
+  });
+}
+function obsMediaIds(o) {
+  var ids = (o.photos || []).slice(0);
+  for (var i = 0; i < (o.audios || []).length; i++) { ids.push(o.audios[i].id); }
+  return ids;
+}
+
+/* ---------- storage persistence + usage ---------- */
+function requestPersist() {
+  try {
+    if (navigator.storage && navigator.storage.persist) { navigator.storage.persist(); }
+  } catch (e) {}
+}
+function showStorage() {
+  var el = $('storageInfo');
+  var nObs = 0;
+  for (var i = 0; i < DATA.sessions.length; i++) { nObs += DATA.sessions[i].observations.length; }
+  var base = DATA.sessions.length + ' inspection(s), ' + nObs + ' observation(s)';
+  el.textContent = base;
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(function (est) {
+        if (est && est.usage != null) {
+          var used = (est.usage / 1048576).toFixed(1);
+          var quota = est.quota ? (est.quota / 1048576).toFixed(0) : '?';
+          el.textContent = base + ' - storage ' + used + ' MB used / ' + quota + ' MB';
+        }
+      });
+    }
+  } catch (e) {}
+}
+
+/* ---------- navigation ---------- */
+var cur = { view: 'home', sessionId: null, obsId: null };
+function show(view) {
+  cur.view = view;
+  $('viewHome').className = view === 'home' ? 'view' : 'view hidden';
+  $('viewSession').className = view === 'session' ? 'view' : 'view hidden';
+  $('viewObs').className = view === 'obs' ? 'view' : 'view hidden';
+  window.scrollTo(0, 0);
+}
+function goHome() {
+  stopAll();
+  cur.sessionId = null; cur.obsId = null;
+  $('hdrTitle').textContent = 'Field Capture';
+  $('hdrSub').textContent = 'TotalEnergies E&P Angola - Offline observation capture';
+  renderHome();
+  show('home');
+}
+function goSession(id) {
+  stopAll();
+  var s = getSession(id);
+  if (!s) { goHome(); return; }
+  cur.sessionId = id; cur.obsId = null;
+  $('hdrTitle').textContent = s.vesselName;
+  $('hdrSub').textContent = typeLabel(s);
+  renderSession();
+  show('session');
+}
+function goObs(id) {
+  var s = getSession(cur.sessionId);
+  var o = s ? getObs(s, id) : null;
+  if (!o) { goHome(); return; }
+  cur.obsId = id;
+  $('hdrTitle').textContent = 'Observation ' + (s.observations.indexOf(o) + 1);
+  $('hdrSub').textContent = s.vesselName + ' - ' + typeLabel(s);
+  renderObs();
+  show('obs');
+}
+$('btnBack').onclick = function () {
+  if (cur.view === 'obs') { leaveObs(); return; }
+  if (cur.view === 'session') { goHome(); return; }
+  window.location.href = 'https://yotolame.github.io/inspections/';
+};
+
+/* ---------- HOME ---------- */
+function fillTypes() {
+  var fw = $('selFramework').value;
+  var sel = $('selType');
+  sel.innerHTML = '';
+  var list = TYPES[fw];
+  for (var i = 0; i < list.length; i++) {
+    var op = document.createElement('option');
+    op.value = list[i].id;
+    op.textContent = list[i].label;
+    sel.appendChild(op);
+  }
+  updateDp();
+}
+function updateDp() {
+  var t = findType($('selFramework').value, $('selType').value);
+  var show = !!(t && t.dp);
+  $('fldDp').className = show ? 'field' : 'field hidden';
+  if (!show) { $('chkDp').checked = false; }
+}
+$('selFramework').onchange = fillTypes;
+$('selType').onchange = updateDp;
+
+$('btnStart').onclick = function () {
+  var name = $('inVessel').value.replace(/^\s+|\s+$/g, '');
+  if (!name) { toast('Enter the vessel name'); $('inVessel').focus(); return; }
+  var s = {
+    id: uid(),
+    created: new Date().toISOString(),
+    framework: $('selFramework').value,
+    vesselType: $('selType').value,
+    dp: $('chkDp').checked,
+    vesselName: name,
+    location: $('inLocation').value.replace(/^\s+|\s+$/g, ''),
+    date: $('inDate').value || todayYMD(),
+    observations: []
+  };
+  s.forms = sessionForms(s);
+  DATA.sessions.unshift(s);
+  if (!saveData()) { DATA.sessions.shift(); return; }
+  setPref('framework', s.framework);
+  setPref('vesselType', s.vesselType);
+  $('inVessel').value = '';
+  $('inLocation').value = '';
+  requestPersist();
+  goSession(s.id);
+};
+
+function renderHome() {
+  var box = $('sessionList');
+  box.innerHTML = '';
+  if (!DATA.sessions.length) {
+    box.innerHTML = '<div class="card empty">No inspection stored on this device</div>';
+  }
+  for (var i = 0; i < DATA.sessions.length; i++) {
+    (function (s) {
+      var c = document.createElement('div');
+      c.className = 'card item';
+      var badge = s.framework === 'ovid' ? 'badge-ovid' : 'badge-inspectare';
+      c.innerHTML = '<div class="txt"><div class="t1">' + esc(s.vesselName) + '</div>' +
+        '<div class="t2">' + esc(fmtD(s.date)) + (s.location ? ' - ' + esc(s.location) : '') + ' - ' + s.observations.length + ' obs.</div>' +
+        '<div style="margin-top:4px"><span class="badge ' + badge + '">' + esc(typeLabel(s)) + '</span></div></div>' +
+        '<span style="color:#ccc">&#9654;</span>';
+      c.onclick = function () { goSession(s.id); };
+      box.appendChild(c);
+    })(DATA.sessions[i]);
+  }
+  showStorage();
+}
+
+/* ---------- SESSION ---------- */
+function renderSession() {
+  var s = getSession(cur.sessionId);
+  if (!s) { return; }
+  $('sessionMeta').innerHTML =
+    '<b>Vessel:</b> ' + esc(s.vesselName) + '<br>' +
+    '<b>Checklist:</b> ' + esc(typeLabel(s)) + '<br>' +
+    '<b>Date:</b> ' + esc(fmtD(s.date)) + (s.location ? '<br><b>Location:</b> ' + esc(s.location) : '');
+  $('obsCount').textContent = 'Observations (' + s.observations.length + ')';
+  var box = $('obsList');
+  box.innerHTML = '';
+  if (!s.observations.length) {
+    box.innerHTML = '<div class="card empty">No observation yet</div>';
+    return;
+  }
+  for (var i = 0; i < s.observations.length; i++) {
+    (function (o, n) {
+      var c = document.createElement('div');
+      c.className = 'card item';
+      var na = (o.audios || []).length;
+      var np = (o.photos || []).length;
+      var info = fmtDT(o.created) + ' - ' + np + ' photo(s)' + (na ? ' - ' + na + ' rec.' : '');
+      c.innerHTML = '<div class="thumb">' + (np ? '' : 'no photo') + '</div>' +
+        '<div class="txt"><div class="t1">#' + n + '</div><div class="t2">' + esc(info) + '</div>' +
+        '<div class="t3">' + (o.text ? esc(o.text) : '<i style="color:#999">No note</i>') + '</div></div>';
+      c.onclick = function () { goObs(o.id); };
+      box.appendChild(c);
+      if (np) {
+        mediaGet(o.photos[0], function (rec) {
+          if (rec && rec.data) {
+            var th = c.querySelector('.thumb');
+            th.innerHTML = '';
+            var im = document.createElement('img');
+            im.src = rec.data;
+            th.appendChild(im);
+          }
+        });
+      }
+    })(s.observations[i], i + 1);
+  }
+}
+$('btnNewObs').onclick = function () {
+  var s = getSession(cur.sessionId);
+  if (!s) { return; }
+  var now = new Date().toISOString();
+  var o = { id: uid(), created: now, updated: now, text: '', photos: [], audios: [] };
+  s.observations.push(o);
+  if (!saveData()) { s.observations.pop(); return; }
+  goObs(o.id);
+};
+$('btnDelSession').onclick = function () {
+  var s = getSession(cur.sessionId);
+  if (!s) { return; }
+  if (!window.confirm('Delete inspection ' + s.vesselName + ' and its ' + s.observations.length + ' observation(s)?')) { return; }
+  var ids = [];
+  for (var i = 0; i < s.observations.length; i++) { ids = ids.concat(obsMediaIds(s.observations[i])); }
+  DATA.sessions.splice(DATA.sessions.indexOf(s), 1);
+  saveData();
+  mediaDel(ids, function () { goHome(); });
+};
+
+/* ---------- OBSERVATION ---------- */
+var objUrls = [];
+function curObs() {
+  var s = getSession(cur.sessionId);
+  return s ? getObs(s, cur.obsId) : null;
+}
+function touchObs(o) { o.updated = new Date().toISOString(); saveData(); }
+function freeUrls() {
+  for (var i = 0; i < objUrls.length; i++) { try { URL.revokeObjectURL(objUrls[i]); } catch (e) {} }
+  objUrls = [];
+}
+function renderObs() {
+  var o = curObs();
+  if (!o) { return; }
+  $('obsStamp').textContent = 'Created ' + fmtDT(o.created) + (o.updated !== o.created ? ' - updated ' + fmtDT(o.updated) : '');
+  $('txtNote').value = o.text || '';
+  renderPhotos();
+  renderAudios();
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  $('liveBox').className = SR ? '' : 'hidden';
+  $('liveStatus').textContent = '';
+  $('selLang').value = getPrefs().lang || 'en-GB';
+  $('btnRec').disabled = !(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if ($('btnRec').disabled) { $('recHint').textContent = 'Audio recording not supported by this browser.'; }
+}
+function renderPhotos() {
+  var o = curObs();
+  var g = $('photoGrid');
+  g.innerHTML = '';
+  if (!o.photos.length) { g.className = 'photos hidden'; return; }
+  g.className = 'photos';
+  for (var i = 0; i < o.photos.length; i++) {
+    (function (pid) {
+      var d = document.createElement('div');
+      d.className = 'ph';
+      var im = document.createElement('img');
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '&#10005;';
+      b.onclick = function (ev) {
+        ev.stopPropagation();
+        if (!window.confirm('Remove this photo?')) { return; }
+        var ob = curObs();
+        ob.photos.splice(ob.photos.indexOf(pid), 1);
+        touchObs(ob);
+        mediaDel([pid]);
+        renderPhotos();
+      };
+      im.onclick = function () { if (im.src) { $('viewerImg').src = im.src; $('viewer').className = 'viewer'; } };
+      d.appendChild(im); d.appendChild(b);
+      g.appendChild(d);
+      mediaGet(pid, function (rec) { if (rec && rec.data) { im.src = rec.data; } });
+    })(o.photos[i]);
+  }
+}
+$('viewer').onclick = function () { $('viewer').className = 'viewer hidden'; $('viewerImg').src = ''; };
+
+function compressImage(file, cb) {
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function () {
+    var w = img.naturalWidth, h = img.naturalHeight;
+    var r = Math.min(1, PHOTO_MAX / Math.max(w, h));
+    var cw = Math.round(w * r), ch = Math.round(h * r);
+    var cv = document.createElement('canvas');
+    cv.width = cw; cv.height = ch;
+    cv.getContext('2d').drawImage(img, 0, 0, cw, ch);
+    var data = null;
+    try { data = cv.toDataURL('image/jpeg', PHOTO_Q); } catch (e) {}
+    cv.width = 0; cv.height = 0;
+    URL.revokeObjectURL(url);
+    cb(data);
+  };
+  img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+  img.src = url;
+}
+function addFiles(files) {
+  var list = [];
+  for (var i = 0; i < files.length; i++) { list.push(files[i]); }
+  var obsId = cur.obsId, sesId = cur.sessionId;
+  function next() {
+    if (!list.length) { return; }
+    var f = list.shift();
+    compressImage(f, function (data) {
+      if (!data) { toast('Photo could not be read'); next(); return; }
+      var id = uid();
+      mediaPut({ id: id, kind: 'photo', mime: 'image/jpeg', data: data, created: new Date().toISOString() }, function (ok) {
+        var s = getSession(sesId);
+        var o = s ? getObs(s, obsId) : null;
+        if (ok && o) {
+          o.photos.push(id);
+          touchObs(o);
+          if (cur.obsId === obsId) { renderPhotos(); }
+        } else if (ok) { mediaDel([id]); }
+        next();
+      });
+    });
+  }
+  next();
+}
+$('inCam').onchange = function () { if (this.files && this.files.length) { addFiles(this.files); } this.value = ''; };
+$('inLib').onchange = function () { if (this.files && this.files.length) { addFiles(this.files); } this.value = ''; };
+
+/* note autosave */
+var noteTimer = null;
+function saveNote() {
+  var o = curObs();
+  if (!o) { return; }
+  var v = $('txtNote').value;
+  if (v !== o.text) { o.text = v; touchObs(o); }
+}
+$('txtNote').oninput = function () {
+  if (noteTimer) { clearTimeout(noteTimer); }
+  noteTimer = setTimeout(saveNote, 600);
+};
+$('txtNote').onblur = saveNote;
+
+/* live dictation (Web Speech API, needs network) */
+var recog = null;
+function stopLive() {
+  if (recog) { try { recog.stop(); } catch (e) {} }
+}
+$('selLang').onchange = function () { setPref('lang', this.value); };
+$('btnLive').onclick = function () {
+  if (recog) { stopLive(); return; }
+  if (!navigator.onLine) { $('liveStatus').textContent = 'No network: use the keyboard microphone instead.'; return; }
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var r;
+  try { r = new SR(); } catch (e) { $('liveStatus').textContent = 'Live dictation not available.'; return; }
+  r.lang = $('selLang').value;
+  r.continuous = true;
+  r.interimResults = true;
+  var ta = $('txtNote');
+  var base = ta.value;
+  if (base && !/\s$/.test(base)) { base += ' '; }
+  r.onresult = function (ev) {
+    var fin = '', interim = '';
+    for (var i = ev.resultIndex; i < ev.results.length; i++) {
+      if (ev.results[i].isFinal) { fin += ev.results[i][0].transcript; } else { interim += ev.results[i][0].transcript; }
+    }
+    if (fin) { base += fin.replace(/^\s+/, '') + ' '; }
+    ta.value = base + interim;
+  };
+  r.onerror = function (ev) { $('liveStatus').textContent = 'Dictation error: ' + (ev.error || 'unknown'); };
+  r.onend = function () {
+    recog = null;
+    ta.value = base.replace(/\s+$/, '');
+    saveNote();
+    $('btnLive').textContent = 'Live dictation (online)';
+    if ($('liveStatus').textContent === 'Listening...') { $('liveStatus').textContent = 'Stopped.'; }
+  };
+  try { r.start(); } catch (e) { $('liveStatus').textContent = 'Dictation could not start.'; return; }
+  recog = r;
+  $('btnLive').textContent = 'Stop dictation';
+  $('liveStatus').textContent = 'Listening...';
+};
+
+/* audio recording (MediaRecorder) */
+var rec = null, recStream = null, recChunks = [], recStart = 0, recTimer = null, recMime = '';
+function pickMime() {
+  var c = ['audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) { return ''; }
+  for (var i = 0; i < c.length; i++) { if (MediaRecorder.isTypeSupported(c[i])) { return c[i]; } }
+  return '';
+}
+function fmtSec(s) { s = Math.round(s); return Math.floor(s / 60) + ':' + pad(s % 60); }
+function stopRec() { if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) {} } }
+function releaseMic() {
+  if (recStream) {
+    var tr = recStream.getTracks();
+    for (var i = 0; i < tr.length; i++) { tr[i].stop(); }
+  }
+  recStream = null;
+}
+$('btnRec').onclick = function () {
+  if (rec) { stopRec(); return; }
+  var obsId = cur.obsId, sesId = cur.sessionId;
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    recStream = stream;
+    recMime = pickMime();
+    try {
+      rec = recMime ? new MediaRecorder(stream, { mimeType: recMime }) : new MediaRecorder(stream);
+    } catch (e) {
+      try { rec = new MediaRecorder(stream); recMime = ''; } catch (e2) { releaseMic(); toast('Recorder could not start'); return; }
+    }
+    recChunks = [];
+    rec.ondataavailable = function (ev) { if (ev.data && ev.data.size) { recChunks.push(ev.data); } };
+    rec.onstop = function () {
+      var mime = rec.mimeType || recMime || 'audio/mp4';
+      var dur = (Date.now() - recStart) / 1000;
+      var blob = new Blob(recChunks, { type: mime });
+      rec = null; recChunks = [];
+      clearInterval(recTimer);
+      releaseMic();
+      $('btnRec').textContent = 'Record';
+      $('recStatus').className = 'rec-status hidden';
+      if (!blob.size) { toast('Empty recording'); return; }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var id = uid();
+        mediaPut({ id: id, kind: 'audio', mime: mime, data: fr.result, created: new Date().toISOString() }, function (ok) {
+          var s = getSession(sesId);
+          var o = s ? getObs(s, obsId) : null;
+          if (ok && o) {
+            o.audios.push({ id: id, mime: mime, duration: Math.round(dur) });
+            touchObs(o);
+            if (cur.obsId === obsId) { renderAudios(); }
+          } else if (ok) { mediaDel([id]); }
+        });
+      };
+      fr.onerror = function () { toast('Recording could not be saved'); };
+      fr.readAsArrayBuffer(blob);
+    };
+    rec.start(1000);
+    recStart = Date.now();
+    $('btnRec').textContent = 'Stop';
+    $('recStatus').className = 'rec-status';
+    $('recStatus').textContent = 'Recording 0:00';
+    recTimer = setInterval(function () { $('recStatus').textContent = 'Recording ' + fmtSec((Date.now() - recStart) / 1000); }, 500);
+  })['catch'](function (e) {
+    toast('Microphone not available: ' + (e && e.name ? e.name : 'denied'));
+  });
+};
+function renderAudios() {
+  var o = curObs();
+  var box = $('audioList');
+  freeUrls();
+  box.innerHTML = '';
+  for (var i = 0; i < o.audios.length; i++) {
+    (function (a, n) {
+      var row = document.createElement('div');
+      row.className = 'audio-item';
+      var lab = document.createElement('span');
+      lab.style.fontSize = '12px'; lab.style.color = '#777'; lab.style.flex = 'none';
+      lab.textContent = '#' + n + ' ' + fmtSec(a.duration || 0);
+      var au = document.createElement('audio');
+      au.controls = true;
+      au.preload = 'metadata';
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-danger';
+      del.style.padding = '8px 10px';
+      del.innerHTML = '&#10005;';
+      del.onclick = function () {
+        if (!window.confirm('Delete this recording?')) { return; }
+        var ob = curObs();
+        for (var k = 0; k < ob.audios.length; k++) { if (ob.audios[k].id === a.id) { ob.audios.splice(k, 1); break; } }
+        touchObs(ob);
+        mediaDel([a.id]);
+        renderAudios();
+      };
+      row.appendChild(lab); row.appendChild(au); row.appendChild(del);
+      box.appendChild(row);
+      mediaGet(a.id, function (r) {
+        if (r && r.data) {
+          var u = URL.createObjectURL(new Blob([r.data], { type: r.mime || a.mime }));
+          objUrls.push(u);
+          au.src = u;
+        }
+      });
+    })(o.audios[i], i + 1);
+  }
+}
+
+function stopAll() {
+  if (noteTimer) { clearTimeout(noteTimer); noteTimer = null; }
+  if (cur.view === 'obs') { saveNote(); }
+  stopLive();
+  stopRec();
+  freeUrls();
+}
+function leaveObs() {
+  stopAll();
+  var s = getSession(cur.sessionId);
+  var o = curObs();
+  if (s && o && !o.text && !o.photos.length && !o.audios.length && !rec) {
+    s.observations.splice(s.observations.indexOf(o), 1);
+    saveData();
+  }
+  goSession(cur.sessionId);
+}
+$('btnDoneObs').onclick = leaveObs;
+$('btnDelObs').onclick = function () {
+  var s = getSession(cur.sessionId);
+  var o = curObs();
+  if (!s || !o) { return; }
+  if (!window.confirm('Delete this observation?')) { return; }
+  stopAll();
+  s.observations.splice(s.observations.indexOf(o), 1);
+  saveData();
+  mediaDel(obsMediaIds(o), function () { goSession(cur.sessionId); });
+};
+
+window.addEventListener('pagehide', function () { if (cur.view === 'obs') { saveNote(); } });
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'hidden' && cur.view === 'obs') { saveNote(); stopRec(); }
+});
+
+/* ---------- init (script at end of body: DOM already parsed) ---------- */
+function init() {
+  loadData();
+  dbOpen();
+  var p = getPrefs();
+  if (p.framework && TYPES[p.framework]) { $('selFramework').value = p.framework; }
+  fillTypes();
+  if (p.vesselType && findType($('selFramework').value, p.vesselType)) { $('selType').value = p.vesselType; updateDp(); }
+  $('inDate').value = todayYMD();
+  goHome();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')['catch'](function () {});
+  }
+}
+init();
+</script>
+</body>
+</html>
